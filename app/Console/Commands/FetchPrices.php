@@ -4,8 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\Price;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class FetchPrices extends Command
@@ -29,7 +29,7 @@ class FetchPrices extends Command
      */
     public function handle()
     {
-        ini_set('memory_limit', '256M');
+        ini_set('memory_limit', '512M');
 
         try {
             $currencyRateResponse = Http::get(config('services.currency_rate.link') . config('services.currency_rate.api_key'));
@@ -51,6 +51,11 @@ class FetchPrices extends Command
         $spreadsheet = IOFactory::load($filePath);
         $sheet = $spreadsheet->getActiveSheet();
 
+        $toCreate = [];
+        $toUpdate = [];
+
+        $prices = Price::pluck('number')->toArray();
+
         foreach ($sheet->getRowIterator() as $row) {
 
             $cellIterator = $row->getCellIterator();
@@ -62,21 +67,48 @@ class FetchPrices extends Command
                 $data[] = $cell->getValue();
             }
 
-            if (intval($data[0])) {
+            if ($number = intval($data[0])) {
 
                 $bottleSize = (float)str_replace(',', '.', substr($data[3], 0,-2)) * 1000;
 
-                Price::updateOrCreate(
-                    ['number' => intval($data[0])],
-                    [
-                        'name' => $data[1],
-                        'bottlesize' => $bottleSize,
-                        'price' => floatval($data[4]),
-                        'priceGBP' => floatval($data[4]) * $currencyRate,
-                        'timestamp' => now(),
-                    ]
-                );
+                $data = [
+                    'number' => intval($data[0]),
+                    'name' => $data[1],
+                    'bottlesize' => $bottleSize,
+                    'price' => floatval($data[4]),
+                    'priceGBP' => floatval($data[4]) * $currencyRate,
+                    'timestamp' => now(),
+                ];
+
+                if (in_array($number, $prices)) {
+                    $toUpdate[] = $data;
+                } else {
+                    $toCreate[] = $data;
+                }
             }
+        }
+
+        $dataChunks = array_chunk($toCreate, 1000); // Adjust the chunk size as necessary
+
+        foreach ($dataChunks as $chunk) {
+            Price::insert($chunk);
+        }
+
+        if (count($toUpdate)) {
+            $numbers = collect($toUpdate)->pluck('number')->toArray();
+
+            $priceSql = "CASE ";
+            $priceGBPSql = "CASE ";
+
+            foreach ($toUpdate as $number) {
+                $priceSql .= "WHEN number = {$number['number']} THEN {$number['price']} ";
+                $priceGBPSql .= "WHEN number = {$number['number']} THEN '{$number['priceGBP']}' ";
+            }
+
+            $priceSql .= "END";
+            $priceGBPSql .= "END";
+
+            DB::statement("UPDATE prices SET priceGBP = $priceGBPSql, price = $priceSql WHERE number IN (" . implode(',', $numbers) . ")");
         }
 
         $this->info('Prices updated successfully');

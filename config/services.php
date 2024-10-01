@@ -32,7 +32,7 @@ return [
     ],
 
     'currency_rate' => [
-        'api_key' => env('CURRENCY_RATE_API_KEY', 'e5adcce0a8be7b2cd79a13f7bbf78a1b'),
+        'api_key' => env('CURRENCY_RATE_API_KEY', 'e3be923725489cf944d1bf915e5880e6'),
         'link' => env('CURRENCY_RATE_LINK', 'http://apilayer.net/api/live?source=EUR&currencies=GBP&access_key='),
     ],
 
