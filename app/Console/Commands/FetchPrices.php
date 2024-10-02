@@ -55,6 +55,7 @@ class FetchPrices extends Command
         $toUpdate = [];
 
         $prices = Price::pluck('price', 'number')->toArray();
+        $timestamp = now();
 
         foreach ($sheet->getRowIterator() as $row) {
 
@@ -69,30 +70,17 @@ class FetchPrices extends Command
 
             if ($number = intval($data[0])) {
 
-                $bottleSize = (float)str_replace(',', '.', substr($data[3], 0,-2)) * 1000;
-
-                $data = [
-                    'number' => intval($data[0]),
-                    'name' => $data[1],
-                    'bottlesize' => $bottleSize,
-                    'price' => floatval($data[4]),
-                    'priceGBP' => floatval($data[4]) * $currencyRate,
-                    'timestamp' => now(),
-                ];
-
                 if (in_array($number, array_keys($prices))) {
-                    if ($prices[$number] != floatval($data['price'])) {
-                        $toUpdate[] = $data;
+                    if ($prices[$number] != floatval($data[4])) {
+                        $toUpdate[] = $this->getPrice($data, $currencyRate, $timestamp);
                     } // else means the price is the same and we don't need to update it
                 } else {
-                    $toCreate[] = $data;
+                    $toCreate[] = $this->getPrice($data, $currencyRate, $timestamp);;
                 }
             }
         }
 
-        $dataChunks = array_chunk($toCreate, 1000); // Adjust the chunk size as necessary
-
-        foreach ($dataChunks as $chunk) {
+        foreach (array_chunk($toCreate, 1000) as $chunk) {
             Price::insert($chunk);
         }
 
@@ -114,5 +102,19 @@ class FetchPrices extends Command
         }
 
         $this->info('Prices updated successfully');
+    }
+
+    private function getPrice($data, $currencyRate, $timestamp)
+    {
+        $bottleSize = (float)str_replace(',', '.', substr($data[3], 0,-2)) * 1000;
+
+        return [
+            'number' => intval($data[0]),
+            'name' => $data[1],
+            'bottlesize' => $bottleSize,
+            'price' => floatval($data[4]),
+            'priceGBP' => floatval($data[4]) * $currencyRate,
+            'timestamp' => $timestamp,
+        ];
     }
 }
