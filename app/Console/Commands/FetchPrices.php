@@ -54,7 +54,7 @@ class FetchPrices extends Command
         $toCreate = [];
         $toUpdate = [];
 
-        $prices = Price::pluck('number')->toArray();
+        $prices = Price::pluck('price', 'number')->toArray();
 
         foreach ($sheet->getRowIterator() as $row) {
 
@@ -80,8 +80,10 @@ class FetchPrices extends Command
                     'timestamp' => now(),
                 ];
 
-                if (in_array($number, $prices)) {
-                    $toUpdate[] = $data;
+                if (in_array($number, array_keys($prices))) {
+                    if ($prices[$number] != floatval($data['price'])) {
+                        $toUpdate[] = $data;
+                    } // else means the price is the same and we don't need to update it
                 } else {
                     $toCreate[] = $data;
                 }
